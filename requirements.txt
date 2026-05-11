@@ -1,0 +1,11 @@
+numpy>=1.26
+pandas>=2.1
+matplotlib>=3.8
+jupyter>=1.0
+yfinance>=0.2.40
+duckdb>=1.0
+statsmodels>=0.14
+scipy>=1.11
+pytest>=8.0
+black>=24.0
+ruff>=0.4
