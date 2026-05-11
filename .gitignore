@@ -11,7 +11,7 @@ venv/
 env/
 
 # Data files (we don't commit raw market data)
-data/
+/data/
 *.db
 *.duckdb
 *.parquet
