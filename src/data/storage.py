@@ -23,12 +23,13 @@ import pandas as pd
 DEFAULT_DB_PATH = Path("data/market.duckdb")
 
 
-def get_connection(db_path: Path = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
+def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB connection, creating the data directory if needed.
 
     Caller is responsible for closing the connection (use as context manager
     or call .close() explicitly).
     """
+    db_path = Path(db_path)  # coerce strings to Path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     return duckdb.connect(str(db_path))
 
