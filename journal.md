@@ -26,3 +26,56 @@ File: data/market.duckdb (~X MB, gitignored).
 
 Next: exploration notebok - visualize condidate pairs (KO/PEP, XOM/CVX)
 and start building intuition before formalizing cointegration tests
+
+## 2026-05-11 - Visual Exploration 
+
+KO/PEP: both -doubled over 10 years , clearly co-move, both crashed together in March 2020. 
+Pep outperformed KI from -2018 onward in absolute terms, with a noticeable PEP weakness in mid-2023 to end of period - unclear if mean-reverting or structural break
+
+XOM/CVX: Clear regime structure. Pre-2020 stable co-movement at similar levels; 2020 oil crash drove both down (XOM more), recovery saw CVX break out strongly in 2022 energy bull while XOM lagged. Post-2022 both range-bound but at noticeable different levels than pre-pandemic.
+
+Implication: any analysis pooling all 10 years assumes constant parameters that visibly don't hold. Rolling-window or regime-aware estimation will be necessary 
+
+## 2026-05-11 - Rolling Correlation Analysis 
+
+Surprising finding: rolling correlation paints opposite picture from price plots.
+
+KO/PEP (visually clean long-run co-movement) has choppy short-run correlation swinging from 0.25-0.95 over the course of 10 years. Notable correlation crash in late 2024 coinciding with PEP underperformance - possible structural break. 
+
+XOM/CVX (visually messy with clear regime shifts) actually has STRONGER
+short-run correlation, especially post-2019 where it stays ~0.8-0.9.
+Hypothesis: post-COVID oil markets became more macro-driven, reducing
+idiosyncratic noise and increasing co-movement.
+
+Key insight: long-run co-movement (price plots) and short-run sync
+(correlation plots) are different things. Pairs trading wants both:
+cointegration AND reasonable correlation. Phase 2 will test cointegration
+specifically — which can hold even when correlation is choppy.
+
+Practical implication: correlation thresholds as entry gates would create
+constant in/out trading. Need smarter logic (z-score on cointegration
+spread, not rolling correlation).
+
+## 2026-05-11 — Log spread analysis (Phase 1 conclusion)
+
+Two pairs, two failure modes of the naive log spread:
+
+KO/PEP: visually noisy but plausibly mean-reverting around -0.957.
+However, clear regime structure — spread lives above mean 2015-2020,
+below mean 2020-2024, currently breaking back up. A static-mean strategy
+would have lost during the regime transition in 2020 and would be losing
+right now in late 2024.
+
+XOM/CVX: NOT mean-reverting. Drifts -0.05 -> -0.80 -> -0.30 over 10 years.
+Classic visual signature of a non-stationary series. Static thresholds
+would generate false signals for years at a time. The series wanders;
+shocks don't decay.
+
+Implications for Phase 2:
+1. Need proper hedge ratio from cointegration regression, not 1:1 assumption
+2. Need formal stationarity test (Augmented Dickey-Fuller) to reject pairs
+   like XOM/CVX before risking capital on them
+3. Need rolling re-estimation to handle regime shifts like KO/PEP 2020 break
+
+Phase 1 complete. The naive analysis revealed exactly the right problems
+that cointegration testing is designed to solve. Time to formalize.
