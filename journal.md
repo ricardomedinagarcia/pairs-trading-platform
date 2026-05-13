@@ -79,3 +79,62 @@ Implications for Phase 2:
 
 Phase 1 complete. The naive analysis revealed exactly the right problems
 that cointegration testing is designed to solve. Time to formalize.
+
+## 2026-05-12 — Augmented Dickey-Fuller from first principles
+
+Built `src/stats/stationarity.py` and `tests/test_stationarity.py`. Hand-
+implemented the ADF regression via explicit OLS, with automatic AIC/BIC
+lag selection bounded by Schwert's rule (max_lags = floor(12 * (T/100)^0.25)).
+
+**Validated against statsmodels** within 0.01 on both stationary AR(0.5)
+and random walk series. Both qualitative checks (stationary rejects null,
+random walk does not) and quantitative comparisons pass.
+
+### Subtle bug encountered and fixed
+
+Initial implementation refit each candidate lag count using all available
+observations for that lag, then picked the AIC minimum. This was wrong:
+AIC depends on sample size, so comparing AIC values computed on different
+sample sizes (979 obs at lags=20 vs 999 obs at lags=0) is invalid. The
+log-likelihood scales with n, but the 2k penalty doesn't, so larger
+samples systematically produce lower AIC for any model — making the
+selector prefer the smallest lag count regardless of fit quality. Or in
+my case, the opposite: spurious preference for high lag counts because
+the residual variance fell faster than the penalty rose.
+
+Symptom: test statistic was -7.48 on data where statsmodels gave -16.20.
+Both rejected the null at 5%, but the magnitude was off by 2x — the kind
+of "qualitatively right, quantitatively wrong" failure that's the most
+dangerous in quant research.
+
+Fix: during lag selection, constrain all candidate lag counts to the
+sample size required by max_lags. After picking the best lag, refit at
+that lag using the full sample available, for the final reported test
+statistic. This matches statsmodels' procedure.
+
+### Key technical insight
+
+ADF t-statistic does NOT follow the standard t-distribution under the
+null. Under H_0 of unit root, the regressor y_{t-1} is non-stationary,
+violating standard regression inference assumptions. The distribution
+was derived by Dickey and Fuller via simulation; MacKinnon (2010)
+provides modern asymptotic critical values: -3.43 at 1%, -2.86 at 5%,
+-2.57 at 10% (with constant, no trend).
+
+### Lesson for the project
+
+Code that gives plausible-but-wrong answers is the most dangerous failure
+mode. Defense: validate every nontrivial numerical implementation against
+a reference within tight tolerances. The test
+`test_matches_statsmodels_stationary` is what caught this bug. Without it,
+the project would have proceeded with a subtly broken cointegration
+screener.
+
+### Next
+
+Implement Engle-Granger cointegration in `src/stats/cointegration.py`:
+1. OLS regression of log(P1) on log(P2) to estimate hedge ratio
+2. ADF on the residuals (using this module)
+3. Compare against Engle-Granger critical values (-3.37 at 5% for k=2),
+   not standard ADF critical values, because residuals come from an
+   estimated regression
