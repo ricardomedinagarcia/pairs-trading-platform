@@ -35,40 +35,41 @@ def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConn
 
 
 def initialize_schema(conn: duckdb.DuckDBPyConnection) -> None:
-    """Create tables if they don't exist. Safe to run repeatedly (idempotent)."""
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS securities (
-            ticker      VARCHAR PRIMARY KEY,
-            name        VARCHAR,
-            sector      VARCHAR,
-            added_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
+    CREATE TABLE IF NOT EXISTS securities (
+        ticker            VARCHAR PRIMARY KEY,
+        name              VARCHAR,
+        sector            VARCHAR,
+        sub_industry      VARCHAR,
+        is_current_sp500  BOOLEAN DEFAULT FALSE,
+        first_added_date  DATE,
+        added_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
     """)
 
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS prices (
-            ticker      VARCHAR NOT NULL,
-            date        DATE    NOT NULL,
-            open        DOUBLE,
-            high        DOUBLE,
-            low         DOUBLE,
-            close       DOUBLE,
-            adj_close   DOUBLE,
-            volume      BIGINT,
-            PRIMARY KEY (ticker, date)
-        )
+    CREATE TABLE IF NOT EXISTS prices (
+        ticker      VARCHAR NOT NULL,
+        date        DATE    NOT NULL,
+        open        DOUBLE,
+        high        DOUBLE,
+        low         DOUBLE,
+        close       DOUBLE,
+        adj_close   DOUBLE,
+        volume      BIGINT,
+        PRIMARY KEY (ticker, date)
+    )
     """)
 
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS corporate_actions (
-            ticker      VARCHAR NOT NULL,
-            date        DATE    NOT NULL,
-            action_type VARCHAR NOT NULL,  -- 'split' or 'dividend'
-            value       DOUBLE  NOT NULL,
-            PRIMARY KEY (ticker, date, action_type)
-        )
+    CREATE TABLE IF NOT EXISTS corporate_actions (
+        ticker      VARCHAR NOT NULL,
+        date        DATE    NOT NULL,
+        action_type VARCHAR NOT NULL,  -- 'split' or 'dividend'
+        value       DOUBLE  NOT NULL,
+        PRIMARY KEY (ticker, date, action_type)
+    )
     """)
-
 
 def upsert_prices(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> int:
     """Insert price data, replacing existing rows on (ticker, date) conflict.
@@ -90,6 +91,39 @@ def upsert_prices(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> int:
         FROM incoming
     """)
     conn.unregister("incoming")
+    return len(df)
+
+def upsert_securities(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> int:
+    """Insert/update security metadata.
+
+    Args:
+        conn: Active DuckDB connection.
+        df: DataFrame with columns: ticker, name (optional), sector (optional),
+            sub_industry (optional), is_current_sp500 (optional),
+            first_added_date (optional).
+
+    Returns:
+        Number of rows inserted/updated.
+    """
+    if df.empty:
+        return 0
+
+    # Build a complete frame with defaults for missing columns
+    required_cols = ["ticker", "name", "sector", "sub_industry", "is_current_sp500", "first_added_date"]
+    df = df.copy()
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = None
+    df = df[required_cols]
+
+    conn.register("incoming_securities", df)
+    conn.execute("""
+        INSERT OR REPLACE INTO securities
+        (ticker, name, sector, sub_industry, is_current_sp500, first_added_date)
+        SELECT ticker, name, sector, sub_industry, is_current_sp500, first_added_date
+        FROM incoming_securities
+    """)
+    conn.unregister("incoming_securities")
     return len(df)
 
 
