@@ -228,3 +228,140 @@ methodology.
 
 **Next:** Phase 3 begins with synthetic data generation and the
 event-driven backtester architecture in src/backtest/.
+
+## 2026-05-21 — Phase 3a: universe expansion
+
+Switched from 10-ticker hand-picked universe to full S&P 500 ever-member set
+(2015-2024) for proper screening at scale.
+
+Universe construction (`src/data/universe.py`):
+- Source: Wikipedia "List of S&P 500 companies" (current + change log)
+- Required custom User-Agent header (Wikipedia blocks default Python UA)
+- Combined current 503 constituents with 240 historical members removed
+  during our window -> 740 ticker ever-member set
+- This is the textbook fix for survivorship bias in stat arb screening
+
+Batch fetcher (`src/data/batch_fetcher.py`):
+- Rate-limit aware (0.3s delay between requests, configurable)
+- Resumable via skip_existing check against DB
+- Per-ticker retry with exponential backoff
+- Expected runtime: 30-45 min for 740 tickers
+
+Expanded screening (`src/stats/screening_v2.py`):
+- Sector prefiltering: only within-sector pairs
+- Reduces ~273k all-pairs to ~13k within-sector pairs
+- Economically defensible: same-sector pairs share macro drivers
+- Parallelized via multiprocessing.Pool (8 workers on M-series Mac)
+- FDR control via Benjamini-Hochberg, not Bonferroni
+  - Bonferroni at 13k tests too strict (alpha = 3.8e-6)
+  - BH controls expected false discovery RATE, not family-wise error
+  - Standard in genomics, A/B testing, modern quant research
+
+Key methodological talking points for interviews:
+1. Survivorship bias correction via ever-member set
+2. Multiple testing: why FDR > Bonferroni at scale
+3. Sector prefiltering as economic vs statistical gate
+4. Multiprocessing for embarrassingly parallel screening workloads
+
+Next (once fetch completes): run screening_v2, examine results, identify
+top candidates for backtester development.
+
+I constructed an ever-member set of 740 tickers spanning 2015-2024 by combining current S&P 500 constituents with the Wikipedia change log. 
+Of these, 18% had unrecoverable history on yfinance — companies like Allergan, Celgene, and First Republic Bank that were acquired or delisted. 
+These specific cases illustrate why survivorship bias matters: a naive backtest using only currently-available tickers would silently exclude 
+every M&A target and every failed company, producing inflated results. With access to a paid feed like CRSP, the missing data would be recoverable; 
+with yfinance, we accept partial recovery and document the limitation.
+
+## 2026-05-21 — Phase 3a: universe expansion + large-scale screening
+
+### Universe construction
+
+Switched from 10-ticker hand-picked universe to S&P 500 ever-member set
+2015-2024 to address survivorship bias and enable scale-appropriate
+screening.
+
+- Source: Wikipedia "List of S&P 500 companies" (current page + change log)
+- Required custom User-Agent (Wikipedia rejects default Python urllib)
+- 740 unique ticker ever-member set: 503 current + 240 historically-removed
+- 618 tickers (83.5%) successfully fetched via yfinance
+- 122 failures (AGN, ATVI, CELG, FRC, RTN, SIVB, TWTR, MON, etc.) — yfinance
+  has known gaps in delisted ticker history. With a paid feed (CRSP,
+  Compustat) these would be recoverable. Documented limitation.
+- Final database: 1.47M rows, 12-minute total runtime
+
+### Screening v2: sector-restricted with FDR control
+
+13,029 within-sector pairs tested. Multiprocessing on 8 cores brought
+total runtime to ~3 minutes.
+
+Results:
+- Naive 5% (unadjusted): 1,051 pairs (8.1%, vs 5% expected under null)
+- Naive 1% (unadjusted): 219 pairs (1.7%, vs 1% expected under null)
+- BH-FDR at 10%: **0 pairs**
+- BH-FDR at 5%: 0 pairs
+
+### Honest interpretation of the FDR=0 finding
+
+For the rank-1 pair (NDSN/OTIS, p=1.7e-5) to pass BH-FDR at 10%, it
+needs p < 7.7e-6 (= 1/13029 * 0.10). It misses by a factor of 2.
+No single pair in 13k+ is overwhelmingly strong enough to survive.
+
+This is a real finding, not a methodological failure:
+1. Modern equity markets have substantially less cointegration than
+   1990s/2000s literature suggests
+2. ETF and index flows synchronize equities into common factors,
+   creating correlation without level-tethering
+3. Multiple-testing burden at scale is severe; you need either much
+   smaller universes or much stronger signals to survive FDR
+
+Professional stat arb funds have moved to: higher frequencies
+(intraday/microstructure), alternative data, ML on weak signal
+combinations. Classical daily-frequency cointegration on equity pairs
+is a teaching example more than a current production strategy.
+
+### Numerics bugs caught and fixed during development
+
+Three bugs caught by inspecting output, none would have raised an
+exception:
+
+1. **ADF lag selection** (Phase 2): inconsistent sample sizes across
+   AIC candidates produced wrong-by-2x test statistics. Fixed via
+   fixed-sample lag selection matching statsmodels behavior.
+
+2. **Linear interpolation p-values** (Phase 3a, first attempt): capped
+   minimum p at 0.005 due to interpolation grid limits. Produced FDR=0
+   even when 219 pairs passed naive 1%.
+
+3. **Inverted cubic polynomial** (Phase 3a, second attempt): hand-rolled
+   MacKinnon response surface had sign convention backwards. Output
+   showed strongly-cointegrated pairs with p≈0.99 and positive-ADF
+   non-cointegrated pairs with p≈10^-5. Fixed by delegating to
+   statsmodels.tsa.adfvalues.mackinnonp.
+
+Each bug was qualitatively-right, quantitatively-wrong — the most
+dangerous failure mode in quant research. Caught by reference
+validation and by inspecting whether results matched theoretical
+expectations.
+
+### Top 20 by ADF statistic — economically interpretable
+
+Several pairs have plausible economic stories:
+- WEC/XEL: regulated multi-state utilities (classic pair)
+- NTRS/TFC: specialty/regional banks
+- NDSN/OTIS: industrial manufacturers
+- AVGO/ORCL: mature large-cap tech (weaker story but maybe shared
+  enterprise-spend exposure)
+
+Others lack economic stories and are likely false positives despite
+low p-values:
+- ABBV/CI, ICE/WTW, BDX/MRNA
+
+### Phase 3b/3c plan
+
+- Phase 3b: re-screen at sub-industry level. Fewer tests (~1500-3000)
+  improves FDR power. Combine survivors with top-ranked
+  economically-sensible pairs for backtester input.
+
+- Phase 3c: event-driven backtester. Will explicitly disclose selection
+  bias for non-FDR-surviving pairs. Out-of-sample walk-forward
+  validation is the real test.
