@@ -138,3 +138,38 @@ Implement Engle-Granger cointegration in `src/stats/cointegration.py`:
 3. Compare against Engle-Granger critical values (-3.37 at 5% for k=2),
    not standard ADF critical values, because residuals come from an
    estimated regression
+
+## 2026-05-12 — Engle-Granger cointegration
+
+Built `src/stats/cointegration.py` and `tests/test_cointegration.py`. The
+implementation is short because it reuses the hand-built ADF from yesterday.
+
+Procedure: OLS regression of log(P1) on log(P2) for hedge ratio β,
+then ADF on residuals using Engle-Granger critical values (stricter
+than standard ADF because β is estimated rather than known).
+
+Critical values used (MacKinnon 2010, k=2, constant, no trend):
+- 1%: -3.96
+- 5%: -3.37
+- 10%: -3.07
+
+These differ from standard ADF (-3.43, -2.86, -2.57) because the
+residuals have less variation than a truly random series — they were
+constructed by minimizing fit error.
+
+Validation: matches statsmodels.tsa.stattools.coint within 0.5 on
+both synthetic cointegrated and independent random walk pairs.
+Looser tolerance than ADF because statsmodels has subtle internal
+differences in lag selection within its embedded ADF.
+
+Results on real data:
+- KO/PEP: [paste from your smoke test]
+- XOM/CVX: [paste from your smoke test]
+
+Predicted before running: KO/PEP marginal cointegration, XOM/CVX not
+cointegrated (based on visual analysis from the exploration notebook).
+Actual: [your observations]
+
+Next: screening engine — apply this to all C(10,2) = 45 pairs in the
+current universe, rank by ADF statistic, identify candidates that
+pass at 5% significance.
