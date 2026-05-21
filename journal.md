@@ -80,7 +80,7 @@ Implications for Phase 2:
 Phase 1 complete. The naive analysis revealed exactly the right problems
 that cointegration testing is designed to solve. Time to formalize.
 
-## 2026-05-12 — Augmented Dickey-Fuller from first principles
+## 2026-05-13 — Augmented Dickey-Fuller from first principles
 
 Built `src/stats/stationarity.py` and `tests/test_stationarity.py`. Hand-
 implemented the ADF regression via explicit OLS, with automatic AIC/BIC
@@ -139,7 +139,7 @@ Implement Engle-Granger cointegration in `src/stats/cointegration.py`:
    not standard ADF critical values, because residuals come from an
    estimated regression
 
-## 2026-05-12 — Engle-Granger cointegration
+## 2026-05-20 — Engle-Granger cointegration
 
 Built `src/stats/cointegration.py` and `tests/test_cointegration.py`. The
 implementation is short because it reuses the hand-built ADF from yesterday.
@@ -173,3 +173,58 @@ Actual: [your observations]
 Next: screening engine — apply this to all C(10,2) = 45 pairs in the
 current universe, rank by ADF statistic, identify candidates that
 pass at 5% significance.
+
+
+## 2026-05-21
+
+Applied Engle-Granger screening to all C(10,2) = 45 pairs in the universe. 
+
+**Results:** 
+- 1 pair passed at 5% (KO/PEP, ADF=-3.42, threshold=-3.37)
+- 0 pairs passed at 1%
+- 0 pairs passed Bonferroni-adjusted threshold (0.05/45 = 0.0011)
+
+**Interpretation:** Under the null hyptothesis of no cointegration anywhere in the universe, the expected 
+number of false postives at 5% is 0.05 * 45 = 2.25. We obsered 1 rejection. This is fewer than expected
+under the null. Statistically, the data proves esstially no evidence that ANY pair in this universe 
+is truly cointegrated. 
+
+KO/PEP, while passing the individual test, cannot be statistically
+distinguished from a false positive given the multiple-testing burden.
+
+**This is an honest, important finding -- not a failure.** Cointegration
+in random pairs of large-cap US equities is rare. Three reasons:
+1. Company-specific factors (M&A, capital allocation, business mix
+   shifts) cause structural drift even within sectors
+2. ETF and index flows synchronize correlation without tethering levels
+3. True cointegration is a strong statistical claim; even slow drift
+   breaks it
+
+**Runner-ups are revealing:**
+- AAPL/KO (ADF -3.27, β=3.01): no economic story; almost certainly
+  spurious. Hedge ratio correctly captures AAPL's higher volatility.
+- JNJ/MSFT (ADF -3.25, β=0.29): no economic story; same skepticism.
+- JNJ/PEP, JNJ/KO: consumer staples adjacencies; weak economic story.
+- XOM/CVX did not appear in top 10 -- confirms visual intuition from
+  exploration notebook that the spread drifts.
+
+**Hedge ratios carry real information even when pairs aren't cointegrated.**
+The β values correctly reflect relative volatility scaling. This is a
+subtle distinction: hedge ratios are well-defined OLS coefficients
+regardless of stationarity. Cointegration tests whether the resulting
+spread is tradeable.
+
+**Implications for Phase 3:**
+- 10-ticker universe is too small to find robust trading candidates
+- Backtesting only KO/PEP would suffer from selection bias (we found
+  the pair by screening; whatever Sharpe ratio we get is inflated)
+- Strategy: build the backtester on synthetic cointegrated data first
+  (where we know the right answer), validate it works correctly, THEN
+  expand the universe and apply to real candidates
+
+This sequencing also disentangles two different research problems
+(backtester correctness vs. signal discovery) which is much cleaner
+methodology.
+
+**Next:** Phase 3 begins with synthetic data generation and the
+event-driven backtester architecture in src/backtest/.
