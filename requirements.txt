@@ -9,3 +9,6 @@ scipy>=1.11
 pytest>=8.0
 black>=24.0
 ruff>=0.4
+requests>=2.31
+lxml>=5.0
+beautifulsoup4>=4.12
