@@ -491,3 +491,104 @@ Standard 70/30 train/test split:
 - Apply frozen parameters to test
 - Compare in-sample vs out-of-sample Sharpe to quantify the
   selection/overfitting penalty
+
+
+## 2026-05-23 — Phase 3c.2: train/test split reveals overfitting
+
+### Setup
+- Pair: NDSN/OTIS (FDR-validated from screening_v2 sub-industry rerun)
+- Train: pre-2023-06-01 (effectively April 2020 - June 2023 due to OTIS
+  listing date; ~790 tradeable bars)
+- Test: 2023-06-01 - 2024-12-30 (~398 bars)
+- Parameters: re-estimated β=0.7036, α=2.3489 on train only
+- Train-period ADF on residuals: -5.946 (stronger than full-window -5.516)
+
+### Results
+
+| Metric              | Train      | Test       |
+|---------------------|------------|------------|
+| Total return        | +4.16%     | -0.17%     |
+| Annualized return   | +1.29%     | -0.10%     |
+| Annualized vol      | 1.45%      | 1.02%      |
+| Sharpe ratio        | **0.89**   | **-0.10**  |
+| Max drawdown        | -1.42%     | -0.95%     |
+| Trades              | 29         | 13         |
+
+**Overfitting gap: +0.99 Sharpe units.** The entire apparent edge
+disappears out-of-sample.
+
+### Interpretation
+
+Three non-mutually-exclusive explanations:
+
+1. **Selection bias.** NDSN/OTIS was chosen because it survived a
+   1384-test FDR screen — explicitly selected as the most cointegrated
+   in the data we had. The training Sharpe is *conditional on this
+   selection*; the test period does not benefit from it.
+
+2. **Decaying cointegration.** The train-period ADF (-5.946) is stronger
+   than the full-window ADF (-5.516). The relationship was strongest
+   early and has weakened over time. NDSN and OTIS share industrial
+   machinery exposure but differ in growth trajectories, customers,
+   and capital structures. Slow divergence breaks cointegration.
+
+3. **2024 regime shift.** Industrial sector dynamics may have shifted
+   in some way. Harder to defend without economic context.
+
+The cumulative explanation is probably #1 + some #2. Hard to separate
+without more data; not necessary to separate for the actionable
+conclusion.
+
+### The 10-sigma event matters
+
+The March 2023 z-score spike to -10 (noted in Phase 3c.1 journal)
+falls *inside the train window*. That single regime break produced
+a large mean-reverting profit when the spread snapped back. Without
+that event, train Sharpe would likely be much lower. This is a clean
+example of why backtest research must be skeptical of large gains
+from rare events — they don't replicate.
+
+### Methodological win: this is the project working as designed
+
+Most undergraduate quant projects stop at the in-sample backtest and
+report inflated Sharpes. The infrastructure built in Phases 1-3 —
+hand-built validated cointegration test, survivorship-corrected
+universe, sub-industry FDR screening, event-driven backtester with
+look-ahead prevention — exists precisely so that a finding like this
+*can* surface. The negative test Sharpe is not a project failure;
+it's an honest research finding.
+
+The story for interviews:
+"I built a complete pairs-trading research pipeline including
+survivorship-corrected universe construction, sub-industry-level
+cointegration screening with FDR control, and an event-driven
+backtester with proper out-of-sample evaluation. The headline finding
+was that my best FDR-validated candidate pair, NDSN/OTIS, produced
+a Sharpe of 0.89 in-sample but -0.10 out-of-sample — an overfitting
+gap of 0.99 Sharpe units. This is the kind of finding that's
+*invisible* to projects that don't separate train and test data,
+and motivated the walk-forward analysis in the next phase."
+
+### Minor reporting issue noted
+
+The `n_train_bars=2117` in the summary counts raw days in the train
+window, including pre-OTIS-listing days. The backtester correctly
+drops these via `.dropna()` before running, so the actual number of
+*tradeable* train bars is ~790. The reported summary should be fixed
+to reflect tradeable bars rather than raw window bars. Minor cleanup,
+not affecting any numerical result.
+
+### Next: Phase 3c.3 (walk-forward analysis)
+
+Train/test gave one verdict. Walk-forward gives many: re-estimate
+parameters every N months on the trailing window, apply to the next
+M months, slide forward. Produces a time series of out-of-sample
+performance that reveals whether the strategy fails everywhere or
+just in certain regimes.
+
+The setup:
+- Initial training window: 24 months
+- Re-estimation frequency: every 6 months
+- Test window: 6 months (until next re-estimation)
+- Walk through the data measuring each out-of-sample window separately
+- Compare aggregated out-of-sample Sharpe to the train/test result
