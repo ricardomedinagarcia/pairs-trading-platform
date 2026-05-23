@@ -364,4 +364,53 @@ low p-values:
 
 - Phase 3c: event-driven backtester. Will explicitly disclose selection
   bias for non-FDR-surviving pairs. Out-of-sample walk-forward
-  validation is the real test.
+  validation is the real test
+
+## 2026-05-22 — Phase 3b: sub-industry rerun finds FDR survivor
+
+Added `group_by` parameter to screening_v2 with sub_industry as default.
+
+### Numbers
+- 1,384 pairs tested (vs 13,029 at sector level)
+- 123 pass naive 5% (vs 69 expected under null — modest excess)
+- 27 pass naive 1% (vs 14 expected — meaningful excess)
+- **1 pair passes BH-FDR at 5% and 10%: NDSN/OTIS** (p = 1.7e-5,
+  threshold = 7.2e-5 at FDR-10%)
+
+### Why sub-industry granularity worked
+Reduced multiple-testing burden by factor of 9. NDSN/OTIS p-value
+unchanged (same data, same test) but now passes the less stringent
+1.4k-test FDR threshold of 7.2e-5 vs 13k-test threshold of 7.7e-6.
+
+Sub-industry is also more economically defensible than sector. Within
+"Financials" you can pair an investment bank with an insurance company
+and ask cointegration tests to flag the relationship — but there's no
+economic mechanism that should produce such cointegration. Within
+"Investment Banking & Brokerage," cointegration has a coherent story.
+
+### Candidate selection for backtester
+
+Tier 1 (FDR-validated):
+- NDSN/OTIS — industrial machinery, p = 1.7e-5
+
+Tier 2 (strong economic story + low p-value, selection bias acknowledged):
+- CARR/TT — HVAC manufacturers, p = 0.0002
+- MA/V — payment card networks, p = 0.001
+- EOG/FANG — Permian Basin shale E&P, p = 0.001
+- TRGP/WMB — natural gas midstream, p = 0.004
+
+Five total. Documented selection bias for Tier 2: these pairs were
+chosen because they ranked high AND have coherent economic stories.
+Out-of-sample walk-forward analysis is the real test.
+
+### Excluded with notes
+- JNJ/VTRS (negative hedge ratio — likely artifact, not true coint)
+- FTV/OTIS (only 1203 obs — Otis spun off 2020, insufficient history)
+- GOOG/GOOGL (statistically cointegrated but spread too tight to trade
+  profitably; included only as a methodological sanity check)
+
+### Next: Phase 3c — event-driven backtester
+Will build in src/backtest/. Architecture: portfolio state, signal
+generator, execution engine, P&L tracker. Critical: avoid look-ahead
+bias, model transaction costs realistically, use walk-forward
+out-of-sample validation.
