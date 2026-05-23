@@ -414,3 +414,80 @@ Will build in src/backtest/. Architecture: portfolio state, signal
 generator, execution engine, P&L tracker. Critical: avoid look-ahead
 bias, model transaction costs realistically, use walk-forward
 out-of-sample validation.
+
+## 2026-05-22 — Phase 3c.1: event-driven backtester on NDSN/OTIS
+
+Built the full event-driven backtester architecture (events, execution,
+portfolio, strategy, engine) and ran in-sample on NDSN/OTIS. Code in
+`src/backtest/`, analysis in `notebooks/02_backtest_ndsn_otis.ipynb`.
+
+### Architecture
+Five modules following production patterns:
+- events.py: immutable dataclasses for MarketData/Signal/Order/Fill
+- execution.py: commission + half-spread + market impact slippage
+- portfolio.py: hedge-ratio sizing, strict cash+positions accounting
+- strategy.py: rolling z-score mean-reversion with shift(1) discipline
+- engine.py: chronological bar-by-bar event loop
+
+Verified accounting identity holds exactly at every step (initial
+capital - costs = final equity to the penny in the smoke test).
+
+### Results (in-sample, April 2020 - Dec 2024)
+- 1204 bars, 45 fills, 22 round-trips
+- Total return +3.81%, annualized +0.80%, ann. vol 1.34%, Sharpe 0.59
+- Max drawdown -1.50%
+- Win rate 77.3%, mean winner $351, mean loser $284
+- Total costs $17 (negligible at $10k notional)
+
+### Interpretation
+
+These numbers look small but the shape is right. Pairs trading is
+dollar-neutral by construction — net market exposure ~0, so vol is
+inherently low. Sharpe 0.59 with 1.34% vol is comparable to SPY's
+Sharpe with 16% vol over the same period. The strategy extracts a
+small uncorrelated edge.
+
+The whole point of stat arb is running many such strategies in
+parallel: 50 uncorrelated pairs each at Sharpe 0.6 → portfolio Sharpe
+~4.2 by sqrt(N) scaling. Single-pair results aren't impressive in
+isolation; the methodology is.
+
+### Notable observation: 10-sigma event in March 2023
+
+Z-score reached ~-10 briefly. Under normal distribution this is
+mathematically "impossible" (10^-23). In reality it means the 60-day
+rolling vol estimate broke down — local volatility spike, regime
+change, or sector rotation. Strategy traded through it and exited
+profitably, but this would NOT be safe in production without
+additional overlays:
+- Time stops (exit positions held > 60 days)
+- Drawdown stops (exit if MtM loss > 2% of capital)
+- Regime detection (don't trade if spread vol exceeds X over baseline)
+
+### Specific failure case worth noting
+
+Round-trip #5: SHORT entry 2021-09-07, held 100 days, lost $316.
+Largest loser, longest holding period. Classic regime-break failure.
+A 60-day time stop would have cut this earlier.
+
+### Honest selection-bias acknowledgment
+
+In-sample backtest using:
+- A pair selected because it passed FDR screening on this same data
+- Cointegration parameters (β, α) estimated on this same data
+- Strategy parameters (lookback, entry/exit z) not tuned but also not
+  tested out-of-sample
+
+Sharpe 0.59 is likely inflated by these biases. The honest test is
+out-of-sample, which Phase 3c.2 (train/test split) and Phase 3c.3
+(walk-forward) will perform.
+
+### Next session: Phase 3c.2
+
+Standard 70/30 train/test split:
+- Train 2020-04 to 2023-04 (~3 years)
+- Test 2023-04 to 2024-12 (~1.7 years)
+- Estimate β, α, and strategy parameters on train
+- Apply frozen parameters to test
+- Compare in-sample vs out-of-sample Sharpe to quantify the
+  selection/overfitting penalty
