@@ -40,16 +40,15 @@ def screen_within_sectors(
     min_obs: int = 1000,
     n_workers: int | None = None,
     output_csv: str | Path = "data/screening_v2_results.csv",
+    group_by: str = "sector",
 ) -> pd.DataFrame:
-    """Run Engle-Granger screening on all within-sector pairs.
+    """Run Engle-Granger screening on all pairs within each group.
 
     Args:
-        db_path: Path to the DuckDB database.
-        start, end: Date window for the price data.
-        min_obs: Minimum overlapping observations required to test a pair.
-            Pairs where one ticker has limited history are skipped.
-        n_workers: Number of parallel processes. Default uses cpu_count() - 1.
-        output_csv: Where to write the results.
+        group_by: Either 'sector' (broad, ~13k pairs) or 'sub_industry'
+            (granular, ~2k pairs). Sub-industry produces fewer, more
+            economically defensible pairs and stronger FDR power.
+        (other args as before)
 
     Returns:
         DataFrame with one row per pair tested, sorted by ADF statistic
@@ -66,7 +65,7 @@ def screen_within_sectors(
 
     print("Loading securities metadata...")
     securities = conn.execute(
-        "SELECT ticker, sector FROM securities WHERE sector IS NOT NULL"
+        "SELECT ticker, sector, sub_industry FROM securities WHERE sector IS NOT NULL"
     ).df()
     conn.close()
 
@@ -80,19 +79,29 @@ def screen_within_sectors(
     print(f"Eligible tickers (>= {min_obs} obs): {len(eligible_tickers)}")
 
     # Group eligible tickers by sector
-    sec_lookup = securities.set_index("ticker")["sector"].to_dict()
+    if group_by not in ("sector", "sub_industry"):
+        raise ValueError(f"group_by must be 'sector' or 'sub_industry', got {group_by!r}")
+
+    sec_lookup = securities.set_index("ticker")[group_by].to_dict()
     sector_groups: dict[str, list[str]] = {}
-    no_sector = []
+    no_group = []
     for t in eligible_tickers:
         s = sec_lookup.get(t)
-        if s:
+        if s and pd.notna(s):
             sector_groups.setdefault(s, []).append(t)
         else:
-            no_sector.append(t)
-    print(f"Tickers without sector info: {len(no_sector)} (will be skipped)")
-    print(f"Sectors found: {len(sector_groups)}")
-    for sec, tickers in sorted(sector_groups.items()):
-        print(f"  {sec}: {len(tickers)} tickers, {len(tickers)*(len(tickers)-1)//2} pairs")
+            no_group.append(t)
+    print(f"Grouping by: {group_by}")
+    print(f"Tickers without {group_by} info: {len(no_group)} (will be skipped)")
+    print(f"Groups found: {len(sector_groups)}")
+    # Only print top 20 groups by size to avoid spamming output for sub_industry
+    sorted_groups = sorted(sector_groups.items(), key=lambda x: -len(x[1]))
+    for grp, tickers in sorted_groups[:20]:
+        n = len(tickers)
+        print(f"  {grp}: {n} tickers, {n*(n-1)//2} pairs")
+    if len(sorted_groups) > 20:
+        remaining = len(sorted_groups) - 20
+        print(f"  ... and {remaining} more groups")
 
     # Generate the work list: (ticker1, ticker2) pairs within each sector
     work_items: list[tuple[str, str]] = []
@@ -246,5 +255,11 @@ def summarize_v2(df: pd.DataFrame) -> None:
 
 
 if __name__ == "__main__":
-    df = screen_within_sectors()
+    import sys
+
+    group_by = sys.argv[1] if len(sys.argv) > 1 else "sub_industry"
+    output_csv = f"data/screening_v2_{group_by}_results.csv"
+
+    print(f"Running screening grouped by: {group_by}")
+    df = screen_within_sectors(group_by=group_by, output_csv=output_csv)
     summarize_v2(df)
