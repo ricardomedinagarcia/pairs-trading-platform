@@ -761,3 +761,154 @@ multiple-testing burden. Specifically:
 - Deflated Sharpe ratio (Lopez de Prado) on each pair
 - Bootstrap confidence intervals on aggregate Sharpe
 - Probabilistic Sharpe ratio
+
+## 2026-05-24 — Phase 3d: deflated Sharpe and bootstrap CIs
+
+Built `src/backtest/metrics.py` implementing three López de Prado
+adjustments for backtest evaluation: Probabilistic Sharpe Ratio (PSR),
+Deflated Sharpe Ratio (DSR), and bootstrap CI.
+
+### Headline results
+
+**NDSN/OTIS (walk-forward, 627 daily returns):**
+- Observed Sharpe: +0.518
+- PSR (P(true SR > 0)): **0.795**
+- DSR (N=1384 trials): **0.000**
+- Bootstrap 90% CI: [-0.53, +1.58]
+- Return skewness: +0.50, excess kurtosis: +6.49
+
+**Per-pair common-window 2022-2024:**
+
+| Pair       | SR    | PSR  | DSR  | 90% CI            |
+|------------|-------|------|------|-------------------|
+| NDSN/OTIS  | +0.52 | 0.79 | 0.00 | [-0.53, +1.58]    |
+| CARR/TT    | -0.38 | 0.28 | 0.00 | [-1.41, +0.73]    |
+| MA/V       | +1.38 | 0.99 | 0.00 | [+0.39, +2.36]    |
+| EOG/FANG   | -0.53 | 0.20 | 0.00 | [-1.57, +0.51]    |
+| TRGP/WMB   | -0.42 | 0.26 | 0.00 | [-1.46, +0.62]    |
+
+**Portfolio (equal-weight, common window):**
+- Observed Sharpe: -0.305
+- PSR: 0.315 (i.e., P(SR > 0) only 31.5%)
+- DSR: 0.000
+- 90% CI: [-1.34, +0.79]
+
+### The two-number reading
+
+PSR and DSR tell complementary stories that are most informative when
+contrasted. Take NDSN/OTIS:
+
+- PSR 0.795: If we'd tested only this pair, the data would give us
+  79.5% confidence that its true Sharpe is positive. Decent evidence
+  in isolation.
+
+- DSR 0.000: Given that we tested 1,384 candidate pairs before
+  picking this one, the observed Sharpe is well within the range we'd
+  expect from the BEST of 1,384 random-noise strategies. The apparent
+  edge is fully explained by selection bias.
+
+The combination of these two numbers is the answer to "is this edge
+real?" in a way no single metric is. PSR alone is too generous; raw
+Sharpe alone ignores both sample size and selection. DSR alone is so
+strict it's discouraging without context. Together they give the full
+picture: the strategy looks real if you forget how it was found, but
+remembering how it was found dissolves the apparent edge.
+
+### MA/V is the only meaningful exception
+
+Across all five candidate pairs, MA/V is the only one with a 90%
+bootstrap CI that excludes zero ([+0.39, +2.36]). The structural
+argument for this pair has been consistent since Phase 3b:
+Mastercard and Visa are essentially the same business -- card
+networks with identical revenue models, regulatory environments,
+and customer bases. The cointegration is structural rather than
+incidental.
+
+That said, MA/V's DSR is still 0.000. Even its strong observed
+Sharpe of +1.38 doesn't exceed the expected-max-Sharpe under the
+null of 1,384 trials (~3.2 annualized). The pair shows the most
+durable edge in our universe, but "most durable" of pairs that
+all fail strict deflation is still failing strict deflation.
+
+### Why all DSRs are 0.000 (this is not a bug)
+
+The expected maximum Sharpe from N=1,384 random-noise strategies is
+approximately 3.2 (annualized, assuming Sharpe std ≈ 1 under null).
+None of our observed Sharpes exceed 3.2. Therefore P(true_SR >
+expected_max) is essentially zero for every pair.
+
+This may seem too strict, but it's the correct framing. The López
+de Prado deflation is asking: "Among 1,384 random walks, the BEST
+one will have Sharpe near 3.2. Did your candidate beat that?" Our
+candidates didn't.
+
+A more lenient interpretation uses an "effective N" that accounts
+for trial dependence. Within-sub-industry pairs share macro
+drivers, so 1,384 isn't 1,384 independent draws. The effective N
+might be 200-500. But even with N=200, the deflated benchmark
+drops only to ~2.8 -- still above our best observed Sharpe.
+
+### Return distribution: fat tails confirmed
+
+NDSN/OTIS daily returns:
+- Skewness +0.50 (mild right skew -- occasional outsized winners)
+- Excess kurtosis +6.49 (extreme fat tails vs normal's 0.0)
+
+Excess kurtosis of 6.5 means the tails of the return distribution
+are dramatically fatter than normal. This is consistent with what
+the equity curve looked like in Phase 3c.1: most bars near zero
+return, rare bars with large positive returns. The PSR formula
+explicitly corrects for this -- if returns were normal, PSR would
+be higher than 0.795. The fat tails are appropriately punishing
+the inference.
+
+### What this means for the project narrative
+
+The most honest summary is now:
+
+"After full screening, FDR control, sub-industry restriction,
+walk-forward validation, and López de Prado adjustments:
+
+1. No single pair's Sharpe survives deflation against 1,384 trials.
+2. MA/V is the most structurally defensible candidate; its 90%
+   bootstrap CI [+0.39, +2.36] excludes zero, suggesting durable edge.
+3. An equal-weight portfolio of all five pairs has PSR of 0.31 and
+   bootstrap CI [-1.34, +0.79] containing zero. We can't rule out
+   that the portfolio's true Sharpe is negative.
+4. The findings are consistent with the academic literature on
+   stat-arb decay: classical pairs trading was profitable in the
+   1990s-2000s, became crowded in the 2010s, and is now mostly
+   arbitraged away except in structurally-tight relationships."
+
+### Interview talking point
+
+"I implemented López de Prado's deflated Sharpe ratio to address
+the central critique of any screened backtest: that the best of N
+trials is biased upward. After deflation against my 1,384-pair
+screen, no candidate had a statistically defensible edge. The
+exception was MA/V (Mastercard/Visa), the only pair whose 90%
+bootstrap confidence interval excluded zero. The structural
+similarity of the two card networks -- identical business models,
+regulators, customer bases -- is the candidate explanation for why
+this cointegration relationship remains durable when others have
+decayed."
+
+### Closing the methodology loop
+
+Phase 1: data
+Phase 2: hand-built tests, validated
+Phase 3a: universe expansion with survivorship correction
+Phase 3b: FDR-controlled screening
+Phase 3c.1: in-sample backtest
+Phase 3c.2: train/test split (overfitting gap revealed)
+Phase 3c.3: walk-forward (regime dependence revealed)
+Phase 3c.4: multi-pair walk-forward (strategy decay revealed)
+Phase 3d: deflated Sharpe (selection bias quantified)
+
+The methodology is now complete. Each phase adds a layer of rigor;
+each layer reveals a different limitation of the previous one.
+
+### Next: README rewrite
+
+Tell the project's story top-to-bottom in the README. Becomes the
+front door for recruiters.
