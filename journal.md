@@ -592,3 +592,79 @@ The setup:
 - Test window: 6 months (until next re-estimation)
 - Walk through the data measuring each out-of-sample window separately
 - Compare aggregated out-of-sample Sharpe to the train/test result
+
+## 2026-05-24 — Phase 3c.3: walk-forward reveals regime-dependent edge
+
+Walk-forward analysis with 24-month training window, 6-month re-estimation
+step. 5 walk-forward steps spanning April 2022 - September 2024.
+
+### Headline result
+Aggregate stitched out-of-sample Sharpe: **0.52** (vs train/test result
+of -0.10 from Phase 3c.2). The strategy DOES generalize, but only when
+parameters are re-estimated periodically. Frozen parameters from a
+single fit don't work.
+
+### Layered findings
+
+**1. Per-step performance is wildly regime-dependent:**
+- Step 0 (Mar-Sep 2022): Sharpe +0.37 (β=0.735, ADF=-4.82)
+- Step 1 (Sep 2022-Mar 2023): Sharpe +2.31 (β=0.693, ADF=-2.76)
+- Step 2 (Mar-Sep 2023): Sharpe -0.71 (β=0.544, ADF=-1.96)
+- Step 3 (Sep 2023-Mar 2024): Sharpe -0.45 (β=0.517, ADF=-2.48)
+- Step 4 (Mar-Sep 2024): Sharpe +0.99 (β=0.584, ADF=-2.51)
+
+**2. Step 1 dominates aggregate Sharpe.** The 10-sigma z-score event
+in March 2023 produced one big winner. Median per-step Sharpe is
++0.37; mean is +0.50; weighted aggregate is +0.52. Remove step 1 and
+performance is near zero.
+
+**3. Cointegration strength decayed structurally.** ADF statistic on
+trailing residuals fell from -4.82 (step 0, strongly significant) to
+-1.96 (step 2, not significant at any conventional level) and stayed
+weak. The relationship was breaking down.
+
+### The most important conceptual takeaway
+
+There's a non-monotonic relationship between cointegration test
+strength and forward performance:
+- Step 1: weak ADF (-2.76) but strongest forward Sharpe (+2.31)
+- Step 4: similarly weak ADF (-2.51) but positive Sharpe (+0.99)
+- Steps 2-3: weak ADF, negative Sharpe
+
+Standard ADF gating (only trade if trailing ADF < -3.37) would have
+skipped steps 1-4, missing both the big winner AND the losing periods.
+This is a clean reminder that statistical significance of a
+cointegrating relationship does not predict forward profitability
+in any simple way -- the relationship between cointegration strength
+and trading edge is subtle.
+
+### What this changes about the project narrative
+
+Yesterday I framed the train/test result as "the strategy fails out-
+of-sample." Today's walk-forward complicates that: the strategy
+*can* be made to work out-of-sample if parameters are kept fresh
+through rolling re-estimation. The honest summary for interviews is:
+
+"With static parameters, the strategy did not generalize. With
+walk-forward re-estimation, the aggregate out-of-sample Sharpe was
+0.52, but performance was highly regime-dependent. A single 6-month
+window dominated aggregate results, driven by a 10-sigma mean-
+reversion event. The strategy has intermittent edge, not steady edge."
+
+### Parameter drift quantified
+- β range: [0.517, 0.735] — substantial variation
+- α range: [2.216, 3.166]
+- ADF range: [-4.82, -1.96]
+
+### Methodological wins
+1. Walk-forward uncovered regime dependence invisible to train/test
+2. Concatenated stitched equity provides honest realistic experience
+3. Each step's pre-test ADF is information available in real time;
+   could power a regime filter in production
+
+### Next steps (Phase 3c.4 onward)
+- Extend to the other 4 candidate pairs (CARR/TT, MA/V, EOG/FANG,
+  TRGP/WMB) under same walk-forward methodology
+- Aggregate across pairs (portfolio-level Sharpe)
+- Phase 3d: deflated Sharpe ratio adjustment, bootstrapped confidence
+  intervals on the aggregate
