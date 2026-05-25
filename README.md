@@ -213,38 +213,50 @@ Three López de Prado adjustments:
 
 ---
 
-## Repository structure
+## Technical Highlights
+
+- Built an end-to-end statistical arbitrage research pipeline in Python.
+- Implemented ADF and Engle-Granger tests from first principles.
+- Corrected for survivorship bias using an S&P 500 ever-member universe.
+- Applied Benjamini-Hochberg FDR control across 1,384 candidate pairs.
+- Designed an event-driven backtester with explicit look-ahead-bias prevention.
+- Evaluated performance using walk-forward testing, PSR, DSR, and bootstrap confidence intervals.
+
+## Repository Structure
+
+```text
 pairs-trading/
 ├── src/
 │   ├── data/
-│   │   ├── universe.py           # Wikipedia-based S&P 500 ever-member set
-│   │   ├── fetcher.py            # yfinance ingestion with retry
-│   │   ├── batch_fetcher.py      # Rate-limited universe-scale download
-│   │   └── storage.py            # DuckDB schema and access layer
+│   │   ├── universe.py        # Wikipedia-based S&P 500 ever-member set
+│   │   ├── fetcher.py         # yfinance ingestion with retry
+│   │   ├── batch_fetcher.py   # Rate-limited universe-scale download
+│   │   └── storage.py         # DuckDB schema and access layer
 │   ├── stats/
-│   │   ├── stationarity.py       # Hand-built ADF, validated against statsmodels
-│   │   ├── cointegration.py      # Engle-Granger two-step test
-│   │   ├── screening.py          # Sector-level pairwise screen
-│   │   └── screening_v2.py       # Sub-industry-level screen with FDR control
+│   │   ├── stationarity.py    # Hand-built ADF, validated against statsmodels
+│   │   ├── cointegration.py   # Engle-Granger two-step test
+│   │   ├── screening.py       # Sector-level pairwise screen
+│   │   └── screening_v2.py    # Sub-industry-level screen with FDR control
 │   └── backtest/
-│       ├── events.py             # Event dataclasses
-│       ├── execution.py          # Slippage and commission models
-│       ├── portfolio.py          # Position tracking, hedge-ratio sizing
-│       ├── strategy.py           # Mean-reversion on z-scored spread
-│       ├── engine.py             # Bar-by-bar event loop
-│       ├── train_test.py         # Phase 3c.2: chronological split
-│       ├── walk_forward.py       # Phase 3c.3: rolling re-estimation
-│       ├── run_multi_pair.py     # Phase 3c.4: multi-pair walk-forward
-│       └── metrics.py            # Phase 3d: PSR, DSR, bootstrap CI
-├── tests/                        # Unit tests (notably for ADF correctness)
-├── notebooks/                    # Exploratory analysis and visualization
+│       ├── events.py          # Event dataclasses
+│       ├── execution.py       # Slippage and commission models
+│       ├── portfolio.py       # Position tracking and hedge-ratio sizing
+│       ├── strategy.py        # Mean-reversion on z-scored spread
+│       ├── engine.py          # Bar-by-bar event loop
+│       ├── train_test.py      # Chronological train/test split
+│       ├── walk_forward.py    # Rolling re-estimation
+│       ├── run_multi_pair.py  # Multi-pair walk-forward portfolio
+│       └── metrics.py         # PSR, DSR, bootstrap CI
+├── tests/                     # Unit tests
+├── notebooks/                 # Exploratory analysis and visualization
 │   ├── 01_data_exploration.ipynb
 │   ├── 02_backtest_ndsn_otis.ipynb
 │   ├── 03_train_test_ndsn_otis.ipynb
 │   ├── 04_walkforward_ndsn_otis.ipynb
 │   └── 05_multi_pair_results.ipynb
-├── journal.md                    # Research journal: decisions, bugs, findings
-└── README.md                     # This file
+├── journal.md                 # Research journal
+└── README.md
+```
 
 
 The journal in `journal.md` is the project's substantive record. Every
