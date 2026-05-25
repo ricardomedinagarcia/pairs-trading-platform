@@ -668,3 +668,96 @@ reversion event. The strategy has intermittent edge, not steady edge."
 - Aggregate across pairs (portfolio-level Sharpe)
 - Phase 3d: deflated Sharpe ratio adjustment, bootstrapped confidence
   intervals on the aggregate
+
+## 2026-05-24 — Phase 3c.4: multi-pair walk-forward reveals strategy decay
+
+Ran walk-forward on all 5 candidate pairs, then equal-weight portfolio
+aggregation over the common 2022-2024 window.
+
+### Per-pair aggregate Sharpes (full available history)
+
+| Pair       | Steps | Trades | Agg Sharpe | Total Return | Median Step Sharpe |
+|------------|-------|--------|------------|--------------|---------------------|
+| MA/V       | 15    | 83     | +0.55      | +3.8%        | +0.03               |
+| NDSN/OTIS  | 5     | 26     | +0.52      | +1.6%        | +0.37               |
+| EOG/FANG   | 15    | 78     | +0.45      | +4.9%        | +0.69               |
+| TRGP/WMB   | 15    | 69     | -0.21      | -4.7%        | +0.16               |
+| CARR/TT    | 5     | 24     | -0.37      | -6.6%        | +0.23               |
+
+### Common-window (2022-04 to 2024-09) per-pair Sharpes
+
+| Pair       | Common Sharpe | Common Return |
+|------------|---------------|---------------|
+| MA/V       | +1.39         | +2.58%        |
+| NDSN/OTIS  | +0.52         | +1.64%        |
+| CARR/TT    | -0.37         | -6.57%        |
+| TRGP/WMB   | -0.42         | -1.49%        |
+| EOG/FANG   | -0.52         | -1.68%        |
+
+### Portfolio (equal-weight, common window)
+- Sharpe: **-0.30**
+- Return: -1.10%
+- Two pairs positive, three negative; equal-weighting drags portfolio
+  into the red despite MA/V's strong +1.39
+
+### Three layered findings
+
+**1. Edge decay is systematic.** Most pairs show declining per-step
+Sharpe over time. EOG/FANG had Sharpes of [2.71, 0.68, 2.01, 0.93, 2.12]
+in its first 5 steps (2017-2019) and [-0.14, 0.42, -0.72, -2.45] in
+its last 4 steps (2023-2024). TRGP/WMB shows the same pattern. This
+is consistent with academic literature on stat arb capacity exhaustion --
+the strategy was very profitable in the 1990s/2000s, became crowded in
+the 2010s, and has now been largely arbitraged away.
+
+**2. Structural tightness predicts durability.** MA/V is the only pair
+showing strongest Sharpes in recent steps (+2.94 and +3.55 in late
+steps). Mastercard and Visa are essentially the same business: card
+networks with identical revenue models, regulatory environments, and
+customer bases. The tighter the structural economic link, the more
+durable cointegration over time.
+
+**3. Equal-weight portfolio construction is naive and dangerous.**
+Three losing pairs with -0.37 to -0.52 Sharpe drag down the portfolio
+even though MA/V (+1.39) and NDSN/OTIS (+0.52) had positive edge.
+$20k allocated to a losing pair costs the same in dollar terms as
+$20k allocated to a winning pair. Real funds use risk-budgeting,
+volatility-targeted sizing, and dynamic capital reallocation.
+
+### The "same data, different conclusion" issue
+
+EOG/FANG aggregate Sharpe over full 15 steps: +0.45. Over the common
+2022-2024 5 steps: -0.52. Same strategy, same code, totally different
+conclusion depending on which window you look at. This is a real
+methodological caution -- backtest conclusions are time-window
+dependent, and reporting a single number obscures regime variation.
+
+### Specific observation: CARR/TT failure despite strong economic story
+
+CARR and TT are both major HVAC manufacturers. They share customers,
+regulatory environment, commodity exposure, and end markets. The
+economic story for cointegration is excellent. Yet the strategy fails
+on this pair (-0.37 aggregate, -6.57% in common window). Lesson:
+economic similarity does not guarantee statistical tradability. The
+specific dynamics of the spread (volatility, mean-reversion speed,
+regime stability) matter as much as the underlying business links.
+
+### What I would say in an interview
+
+"I ran walk-forward analysis on five FDR-screened candidate pairs and
+found that aggregate out-of-sample Sharpe ranged from +0.55 to -0.37.
+Most pairs showed edge decay over time -- strong in 2015-2020, weak
+in 2022-2024. Mastercard/Visa was the exception, with strongest
+performance in recent windows due to the structural similarity of the
+two card networks. An equal-weight portfolio of all five pairs produced
+a negative aggregate Sharpe (-0.30) despite two pairs having positive
+individual edge -- a clean illustration of why portfolio construction
+and risk-budgeting matter as much as signal generation in stat arb."
+
+### Next: Phase 3d
+
+Need rigorous statistical adjustment for the selection bias and
+multiple-testing burden. Specifically:
+- Deflated Sharpe ratio (Lopez de Prado) on each pair
+- Bootstrap confidence intervals on aggregate Sharpe
+- Probabilistic Sharpe ratio
